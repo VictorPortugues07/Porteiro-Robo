@@ -75,6 +75,8 @@ class MainActivity : AppCompatActivity() {
 
         // Solicita permissões
         requestPermissions()
+
+
     }
 
     private fun requestPermissions() {
@@ -358,7 +360,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun sendAudioToApi(file: File) {
         Log.d(TAG, "Enviando arquivo para API: ${file.absolutePath}")
+        Log.d(TAG, "Tamanho do arquivo: ${file.length()} bytes")
 
+        // Primeiro, testa a conectividade
+        val testRequest = Request.Builder()
+            .url("http://172.20.141.65:8000/check")
+            .build()
+
+        client.newCall(testRequest).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "Erro de conectividade básica", e)
+                runOnUiThread {
+                    statusText.text = "❌ Servidor inacessível"
+                    responseText.text = "Erro de conectividade: ${e.message}\nVerifique se a API está rodando na porta 8000"
+                    Toast.makeText(this@MainActivity, "Servidor não encontrado", Toast.LENGTH_LONG).show()
+                }
+                return
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                Log.d(TAG, "Teste de conectividade OK: ${response.code}")
+                // Se chegou aqui, a API está acessível, agora envia o áudio
+                enviarArquivoAudio(file)
+            }
+        })
+    }
+
+    private fun enviarArquivoAudio(file: File) {
         val requestBody = object : RequestBody() {
             override fun contentType() = "audio/wav".toMediaTypeOrNull()
             override fun writeTo(sink: BufferedSink) {
@@ -369,22 +397,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         val request = Request.Builder()
-            .url("http://10.0.2.2:8000/voice") // Para emulador
-            // Para dispositivo físico, usar: .url("http://SEU_IP:8000/voice")
+            .url("http://172.20.141.65:8000/voice")
             .post(MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("file", file.name, requestBody)
                 .build())
             .build()
 
+        Log.d(TAG, "Enviando arquivo de áudio...")
+
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                Log.e(TAG, "Erro ao enviar para API", e)
+                Log.e(TAG, "Erro ao enviar áudio para API", e)
                 runOnUiThread {
-                    statusText.text = "❌ Erro de conexão"
+                    statusText.text = "❌ Erro no envio"
                     responseText.text = "Erro: ${e.message}"
-                    Toast.makeText(this@MainActivity, "Erro de conexão com API", Toast.LENGTH_SHORT).show()
-                    // Volta a escutar a wake word
+                    Toast.makeText(this@MainActivity, "Erro no envio: ${e.message}", Toast.LENGTH_LONG).show()
+
                     CoroutineScope(Dispatchers.Main).launch {
                         delay(3000)
                         statusText.text = "🟡 Escutando 'Inocêncio'..."
@@ -393,18 +422,17 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                Log.d(TAG, "Resposta da API recebida. Status: ${response.code}")
+                Log.d(TAG, "Resposta recebida. Status: ${response.code}")
 
                 runOnUiThread {
                     if (response.isSuccessful) {
                         val contentType = response.header("Content-Type")
+                        Log.d(TAG, "Content-Type: $contentType")
 
                         if (contentType?.startsWith("audio/") == true) {
-                            // Resposta em áudio
                             statusText.text = "🔊 Reproduzindo resposta..."
                             responseText.text = "Áudio recebido da API"
 
-                            // Salva e reproduz o áudio
                             response.body?.let { body ->
                                 CoroutineScope(Dispatchers.IO).launch {
                                     try {
@@ -412,6 +440,7 @@ class MainActivity : AppCompatActivity() {
                                         audioResponse.outputStream().use { output ->
                                             body.byteStream().copyTo(output)
                                         }
+                                        Log.d(TAG, "Áudio salvo: ${audioResponse.absolutePath}, ${audioResponse.length()} bytes")
 
                                         runOnUiThread {
                                             playAudio(audioResponse)
@@ -425,19 +454,18 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                         } else {
-                            // Resposta em texto
                             val text = response.body?.string() ?: "Resposta vazia"
                             statusText.text = "✅ Resposta recebida"
                             responseText.text = text
                             Log.d(TAG, "Resposta em texto: $text")
                         }
                     } else {
+                        val errorBody = response.body?.string() ?: "Sem detalhes"
                         statusText.text = "❌ Erro na API"
-                        responseText.text = "Erro HTTP: ${response.code}"
-                        Log.e(TAG, "Erro HTTP: ${response.code}")
+                        responseText.text = "Erro HTTP: ${response.code}\n$errorBody"
+                        Log.e(TAG, "Erro HTTP: ${response.code} - $errorBody")
                     }
 
-                    // Volta a escutar a wake word após 3 segundos
                     CoroutineScope(Dispatchers.Main).launch {
                         delay(3000)
                         if (statusText.text != "🔊 Reproduzindo resposta...") {
@@ -495,3 +523,4 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer?.release()
     }
 }
+

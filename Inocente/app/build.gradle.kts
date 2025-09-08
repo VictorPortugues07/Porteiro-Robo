@@ -61,7 +61,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     // Wake word (Porcupine)
-    implementation("ai.picovoice:porcupine-android:3.0.3")
+    implementation("ai.picovoice:porcupine-android:2.2.0")
 // Rede (simples) para falar com sua API Python (vamos usar OkHttp por simplicidade)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
